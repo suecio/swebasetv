@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Play, Calendar, History, LayoutGrid, MonitorPlay, ChevronLeft, Search } from 'lucide-react';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, onSnapshot, query } from 'firebase/firestore';
 
 // --- TYPESCRIPT DEFINITIONS ---
 // This tells the app exactly what a "Game" object looks like
@@ -14,57 +16,42 @@ type Game = {
   league: string;
 };
 
-// --- MOCK DATA ---
-const MOCK_GAMES: Game[] = [
-  {
-    id: 'game1',
-    title: 'Stockholm Monarchs vs Leksand Lumberjacks',
-    team1: 'Monarchs',
-    team2: 'Lumberjacks',
-    status: 'live',
-    videoId: 'M7lc1UVf-VE',
-    startTime: 'Today, 14:00',
-    league: 'Elitserien'
-  },
-  {
-    id: 'game2',
-    title: 'Sundbyberg Heat vs Sölvesborg Firehawks',
-    team1: 'Heat',
-    team2: 'Firehawks',
-    status: 'live',
-    videoId: 'M7lc1UVf-VE', 
-    startTime: 'Today, 14:00',
-    league: 'Elitserien'
-  },
-  {
-    id: 'game3',
-    title: 'Karlskoga Bats vs Rättvik Butchers',
-    team1: 'Bats',
-    team2: 'Butchers',
-    status: 'upcoming',
-    videoId: 'M7lc1UVf-VE',
-    startTime: 'Tomorrow, 12:00',
-    league: 'Elitserien'
-  },
-  {
-    id: 'game4',
-    title: 'Gefle BC vs Umeå Blue Sox',
-    team1: 'Gefle',
-    team2: 'Umeå',
-    status: 'past',
-    videoId: 'M7lc1UVf-VE',
-    startTime: 'Yesterday',
-    league: 'Regional'
-  }
-];
+// --- FIREBASE CONFIGURATION ---
+const firebaseConfig = {
+  apiKey: "AIzaSyCIhHn43vsrzHFOmaTIRE7vWHTptgoWNJ4",
+  authDomain: "swebasetv.firebaseapp.com",
+  projectId: "swebasetv",
+  storageBucket: "swebasetv.firebasestorage.app",
+  messagingSenderId: "951909848848",
+  appId: "1:951909848848:web:c84ab1c92001bf74a3b795"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
 export default function App() {
   const [currentView, setCurrentView] = useState<'home' | 'watch' | 'multiview'>('home');
   const [activeGame, setActiveGame] = useState<Game | null>(null);
+  const [games, setGames] = useState<Game[]>([]);
 
-  const liveGames = MOCK_GAMES.filter(g => g.status === 'live');
-  const upcomingGames = MOCK_GAMES.filter(g => g.status === 'upcoming');
-  const pastGames = MOCK_GAMES.filter(g => g.status === 'past');
+  // Fetch games from Firebase automatically
+  useEffect(() => {
+    const q = query(collection(db, 'games'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const gamesData: Game[] = [];
+      snapshot.forEach((doc) => {
+        gamesData.push({ id: doc.id, ...doc.data() } as Game);
+      });
+      setGames(gamesData);
+    });
+
+    // Cleanup subscription on unmount
+    return () => unsubscribe();
+  }, []);
+
+  const liveGames = games.filter(g => g.status === 'live');
+  const upcomingGames = games.filter(g => g.status === 'upcoming');
+  const pastGames = games.filter(g => g.status === 'past');
 
   const playVideo = (game: Game) => {
     setActiveGame(game);
