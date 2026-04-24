@@ -1,7 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, setDoc } from "firebase/firestore";
 
-// 1. Firebase Setup (Reusing your exact config)
+// 1. Firebase-konfiguration
 const firebaseConfig = {
   apiKey: "AIzaSyCIhHn43vsrzHFOmaTIRE7vWHTptgoWNJ4",
   authDomain: "swebasetv.firebaseapp.com",
@@ -14,26 +14,34 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// 2. YouTube Setup (Key comes from GitHub Secrets)
-const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY; 
+// 2. YouTube-konfiguration (Nyckel hämtas från GitHub Secrets)
+const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
 
-// TODO: Replace these with the actual IDs you gathered!
+// 3. De aktuella kanalerna för lagen
 const CHANNELS = [
-  { id: "UC_x5XG1OV2P6uZZ5FSM9Ttw", teamName: "Stockholm Monarchs" },
-  { id: "UC_placeholder_id_2", teamName: "Leksand Lumberjacks" }
+  { id: "UCcjCxWAhhHgdqRqtUfAPahg", teamName: "Sundbyberg" },
+  { id: "UCz_f37hbWTXGIBJsAHm-oIw", teamName: "Stockholm" },
+  { id: "UCezpHWTtnumh9jaE2ghxseg", teamName: "Gefle" },
+  { id: "UCkpMvl5JmjD1ox5t8ZQsHhA", teamName: "Rättvik" },
+  { id: "UCRuzEIjH2RjQdIl7s2aTpvg", teamName: "Karlskoga" },
+  { id: "UCkGcX-HoODvO7dzNxd4zY5Q", teamName: "Leksand" },
+  { id: "UC1v9Z1hWzi6UGjvRsiTE_vg", teamName: "Swe3 förbundet" },
+  { id: "UCYWvkaR-99U-d64ea3tdCmQ", teamName: "Skövde" },
+  { id: "UCi9Dsmn-DYWorA_nOf-W-5A", teamName: "Sölvesborg" },
+  { id: "UCRWuifSS5gbBo4ua9W2BvlA", teamName: "Umeå" }
 ];
 
 async function fetchGames() {
-  console.log("Starting YouTube Sync...");
-  
+  console.log("Startar synkronisering med YouTube...");
+
   for (const channel of CHANNELS) {
-    // Ping YouTube for LIVE streams
+    // Kolla efter pågående (live) sändningar
     await fetchAndSave(channel, 'live');
-    // Ping YouTube for UPCOMING streams
+    // Kolla efter kommande (upcoming) sändningar
     await fetchAndSave(channel, 'upcoming');
   }
-  
-  console.log("Sync Complete!");
+
+  console.log("Synkronisering slutförd!");
   process.exit(0);
 }
 
@@ -47,8 +55,8 @@ async function fetchAndSave(channel, status) {
       for (const item of data.items) {
         const videoId = item.id.videoId;
         const title = item.snippet.title;
-        
-        // Auto-detect the sport from the YouTube title!
+
+        // Identifiera automatiskt om det är Baseboll eller Softboll utifrån titeln
         const titleLower = title.toLowerCase();
         const sport = titleLower.includes('softboll') || titleLower.includes('softball') 
           ? 'Softball' 
@@ -56,22 +64,22 @@ async function fetchAndSave(channel, status) {
 
         const gameData = {
           title: title,
-          team1: channel.teamName, // We use the channel owner as Team 1
-          team2: "TBD", // You can manually edit this in Firebase later if you want
+          team1: channel.teamName, // Använd kanalens ägare som lag 1
+          team2: "TBD", // Kan ändras manuellt i Firebase om man vill
           status: status,
           videoId: videoId,
           startTime: status === 'live' ? 'Live Now' : 'Upcoming',
-          league: "Elitserien", // Default league
+          league: "Elitserien",
           sport: sport
         };
 
-        // Save to Firebase (Using the VideoID prevents us from adding duplicates!)
+        // Spara i Firebase (videoId används som dokument-ID för att undvika dubbletter)
         await setDoc(doc(db, "games", videoId), gameData);
-        console.log(`Saved ${status} game: ${title}`);
+        console.log(`Sparade ${status}-match: ${title}`);
       }
     }
   } catch (error) {
-    console.error(`Error fetching for ${channel.teamName}:`, error);
+    console.error(`Fel vid hämtning för ${channel.teamName}:`, error);
   }
 }
 
