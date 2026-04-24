@@ -56,6 +56,23 @@ async function fetchAndSave(channel, status) {
         const videoId = item.id.videoId;
         const title = item.snippet.title;
 
+        // --- NY KOD: Hämta exakt starttid från YouTube ---
+        let exactStartTime = status === 'live' ? 'Live Now' : 'Upcoming';
+        try {
+          const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&id=${videoId}&key=${YOUTUBE_API_KEY}`;
+          const detailsRes = await fetch(detailsUrl);
+          const detailsData = await detailsRes.json();
+          if (detailsData.items && detailsData.items.length > 0) {
+            const streamDetails = detailsData.items[0].liveStreamingDetails;
+            if (streamDetails && streamDetails.scheduledStartTime) {
+              exactStartTime = streamDetails.scheduledStartTime; // ISO Date String (e.g., 2026-05-14T18:00:00Z)
+            }
+          }
+        } catch (e) {
+          console.log("Kunde inte hämta exakt starttid", e);
+        }
+        // ------------------------------------
+
         // Identifiera automatiskt om det är Baseboll eller Softboll utifrån titeln
         const titleLower = title.toLowerCase();
         const sport = titleLower.includes('softboll') || titleLower.includes('softball') 
@@ -68,7 +85,7 @@ async function fetchAndSave(channel, status) {
           team2: "TBD", // Kan ändras manuellt i Firebase om man vill
           status: status,
           videoId: videoId,
-          startTime: status === 'live' ? 'Live Now' : 'Upcoming',
+          startTime: exactStartTime,
           league: "Elitserien",
           sport: sport
         };
