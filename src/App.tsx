@@ -37,9 +37,9 @@ export default function App() {
   // Fetch games from Firebase automatically
   useEffect(() => {
     const q = query(collection(db, 'games'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = onSnapshot(q, (snapshot: any) => {
       const gamesData: Game[] = [];
-      snapshot.forEach((doc) => {
+      snapshot.forEach((doc: any) => {
         gamesData.push({ id: doc.id, ...doc.data() } as Game);
       });
       setGames(gamesData);
