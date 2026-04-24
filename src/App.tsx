@@ -64,6 +64,7 @@ type Game = {
   startTime: string;
   league: string;
   sport?: 'Baseball' | 'Softball' | 'Unknown';
+  season?: string;
 };
 
 // --- FIREBASE CONFIGURATION ---
@@ -417,7 +418,10 @@ function GameCard({ game, lang, i18n, onClick, isLarge = false }: GameCardProps)
       </div>
 
       <div className="p-4 flex-1 flex flex-col">
-        <p className="text-xs text-blue-400 font-semibold tracking-wider mb-1">{game.league}</p>
+        <div className="flex justify-between items-center mb-1">
+          <p className="text-xs text-blue-400 font-semibold tracking-wider">{game.league}</p>
+          {game.season && <p className="text-xs text-slate-500 font-medium">{game.season}</p>}
+        </div>
         <h3 className={`font-bold text-slate-100 leading-tight mb-2 ${isLarge ? 'text-xl' : 'text-base'}`}>
           {game.team1} <span className="text-slate-500 font-normal">{i18n.vs}</span> {game.team2}
         </h3>
