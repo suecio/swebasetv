@@ -14,10 +14,15 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// 2. YouTube-konfiguration (Nyckel hämtas från GitHub Secrets)
+// 2. YouTube-konfiguration
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
 
-// 3. De aktuella kanalerna för lagen
+// --- SÄSONGSINSTÄLLNINGAR ---
+// Ändra detta årtal för att skrapa tidigare säsonger (t.ex. 2025)
+const TARGET_YEAR = 2026; 
+const PUBLISHED_AFTER = `${TARGET_YEAR}-01-01T00:00:00Z`;
+const PUBLISHED_BEFORE = `${TARGET_YEAR}-12-31T23:59:59Z`;
+
 const CHANNELS = [
   { id: "UCcjCxWAhhHgdqRqtUfAPahg", teamName: "Sundbyberg" },
   { id: "UCz_f37hbWTXGIBJsAHm-oIw", teamName: "Stockholm" },
@@ -32,13 +37,14 @@ const CHANNELS = [
 ];
 
 async function fetchGames() {
-  console.log("Startar synkronisering med YouTube...");
+  console.log(`Startar synkronisering med YouTube för säsong ${TARGET_YEAR}...`);
 
   for (const channel of CHANNELS) {
-    // Kolla efter pågående (live) sändningar
+    console.log(`Letar i ${channel.teamName}...`);
     await fetchAndSave(channel, 'live');
-    // Kolla efter kommande (upcoming) sändningar
     await fetchAndSave(channel, 'upcoming');
+    // Kolla efter avslutade (completed) sändningar för det valda året
+    await fetchAndSave(channel, 'completed'); 
   }
 
   console.log("Synkronisering slutförd!");
@@ -47,7 +53,14 @@ async function fetchGames() {
 
 async function fetchAndSave(channel, status) {
   try {
-    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channel.id}&eventType=${status}&type=video&key=${YOUTUBE_API_KEY}`;
+    // maxResults=50 ensures we get a good chunk of the archive
+    let url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channel.id}&eventType=${status}&type=video&key=${YOUTUBE_API_KEY}&maxResults=50`;
+    
+    // Om vi letar efter gamla matcher, begränsa sökningen till valt år
+    if (status === 'completed') {
+      url += `&publishedAfter=${PUBLISHED_AFTER}&publishedBefore=${PUBLISHED_BEFORE}`;
+    }
+
     const response = await fetch(url);
     const data = await response.json();
 
@@ -56,7 +69,7 @@ async function fetchAndSave(channel, status) {
         const videoId = item.id.videoId;
         const title = item.snippet.title;
 
-        // --- NY KOD: Hämta exakt starttid från YouTube ---
+        // Hämta exakt starttid
         let exactStartTime = status === 'live' ? 'Live Now' : 'Upcoming';
         try {
           const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&id=${videoId}&key=${YOUTUBE_API_KEY}`;
@@ -64,39 +77,49 @@ async function fetchAndSave(channel, status) {
           const detailsData = await detailsRes.json();
           if (detailsData.items && detailsData.items.length > 0) {
             const streamDetails = detailsData.items[0].liveStreamingDetails;
-            if (streamDetails && streamDetails.scheduledStartTime) {
-              exactStartTime = streamDetails.scheduledStartTime; // ISO Date String (e.g., 2026-05-14T18:00:00Z)
+            if (streamDetails) {
+              if (status === 'completed' && streamDetails.actualStartTime) {
+                exactStartTime = streamDetails.actualStartTime;
+              } else if (streamDetails.scheduledStartTime) {
+                exactStartTime = streamDetails.scheduledStartTime;
+              }
             }
           }
         } catch (e) {
           console.log("Kunde inte hämta exakt starttid", e);
         }
-        // ------------------------------------
 
-        // Identifiera automatiskt om det är Baseboll eller Softboll utifrån titeln
+        // Fallback: If YouTube stripped the live streaming details from an old video, use publish date
+        if (exactStartTime === 'Upcoming' && status === 'completed') {
+            exactStartTime = item.snippet.publishedAt;
+        }
+
         const titleLower = title.toLowerCase();
         const sport = titleLower.includes('softboll') || titleLower.includes('softball') 
           ? 'Softball' 
           : 'Baseball';
 
+        // Konvertera YouTubes 'completed' till vår apps 'past'
+        const dbStatus = status === 'completed' ? 'past' : status;
+
         const gameData = {
           title: title,
-          team1: channel.teamName, // Använd kanalens ägare som lag 1
-          team2: "TBD", // Kan ändras manuellt i Firebase om man vill
-          status: status,
+          team1: channel.teamName, 
+          team2: "TBD", 
+          status: dbStatus,
           videoId: videoId,
           startTime: exactStartTime,
           league: "Elitserien",
-          sport: sport
+          sport: sport,
+          season: TARGET_YEAR.toString() // Lägg till säsongen!
         };
 
-        // Spara i Firebase (videoId används som dokument-ID för att undvika dubbletter)
         await setDoc(doc(db, "games", videoId), gameData);
-        console.log(`Sparade ${status}-match: ${title}`);
+        console.log(`Sparade ${dbStatus}-match: ${title} (${exactStartTime})`);
       }
     }
   } catch (error) {
-    console.error(`Fel vid hämtning för ${channel.teamName}:`, error);
+    console.error(`Fel vid hämtning för ${channel.teamName} (${status}):`, error);
   }
 }
 
