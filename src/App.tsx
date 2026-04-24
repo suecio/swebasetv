@@ -14,6 +14,7 @@ type Game = {
   videoId: string;
   startTime: string;
   league: string;
+  sport?: 'Baseball' | 'Softball' | 'Unknown';
 };
 
 // --- FIREBASE CONFIGURATION ---
@@ -65,7 +66,7 @@ export default function App() {
       <div className="md:hidden flex items-center justify-between p-4 bg-slate-900 border-b border-slate-800 sticky top-0 z-50">
         <div className="flex items-center gap-2 text-blue-500 font-bold text-xl">
           <MonitorPlay size={24} />
-          <span>SweBase<span className="text-white">TV</span></span>
+          <span>SweDiamond<span className="text-white">TV</span></span>
         </div>
         <button className="p-2 text-slate-400 hover:text-white" aria-label="Search">
           <Search size={20} />
@@ -76,7 +77,7 @@ export default function App() {
       <nav className="fixed bottom-0 w-full md:w-64 md:relative md:flex-shrink-0 bg-slate-900 border-t md:border-t-0 md:border-r border-slate-800 z-50 flex md:flex-col justify-around md:justify-start p-2 md:p-4 gap-2">
         <div className="hidden md:flex items-center gap-2 text-blue-500 font-bold text-2xl mb-8 p-2">
           <MonitorPlay size={28} />
-          <span>SweBase<span className="text-white">TV</span></span>
+          <span>SweDiamond<span className="text-white">TV</span></span>
         </div>
 
         <NavItem icon={<Play />} label="Live & Home" active={currentView === 'home'} onClick={() => setCurrentView('home')} />
@@ -256,20 +257,25 @@ function GameCard({ game, onClick, isLarge = false }: GameCardProps) {
         <div className="absolute inset-0 bg-gradient-to-t from-slate-900 to-transparent z-10" />
         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-100 via-slate-900 to-black"></div>
         
-        <div className="absolute top-3 left-3 z-20">
+        <div className="absolute top-3 left-3 z-20 flex flex-col gap-1">
           {game.status === 'live' && (
-            <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded flex items-center gap-1 shadow-lg shadow-red-500/30">
+            <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded flex items-center gap-1 shadow-lg shadow-red-500/30 w-max">
               <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span> LIVE
             </span>
           )}
           {game.status === 'upcoming' && (
-            <span className="bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded shadow-lg">
+            <span className="bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded shadow-lg w-max">
               UPCOMING
             </span>
           )}
           {game.status === 'past' && (
-            <span className="bg-slate-700 text-slate-300 text-xs font-bold px-2 py-1 rounded shadow-lg">
+            <span className="bg-slate-700 text-slate-300 text-xs font-bold px-2 py-1 rounded shadow-lg w-max">
               FINAL
+            </span>
+          )}
+          {game.sport && (
+            <span className="bg-slate-800/80 backdrop-blur text-slate-200 text-[10px] font-bold px-2 py-0.5 rounded border border-slate-600 w-max uppercase tracking-wider">
+              {game.sport}
             </span>
           )}
         </div>
