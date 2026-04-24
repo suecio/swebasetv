@@ -1,0 +1,28 @@
+name: Sync YouTube Streams
+
+on:
+  schedule:
+    # This weird string means: "Run every hour, on the hour"
+    - cron: '0 * * * *'
+  workflow_dispatch: # This adds a button so you can click "Run Now" anytime
+
+jobs:
+  update-database:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Firebase
+        run: npm install firebase
+
+      - name: Run Sync Script
+        env:
+          # This pulls your API key securely from GitHub Secrets
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        run: node updateYoutube.js
