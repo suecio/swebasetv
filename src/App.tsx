@@ -1,10 +1,31 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, ReactNode } from 'react';
 import { Play, Calendar, History, LayoutGrid, MonitorPlay, ChevronLeft, Search, Users, Eye, ExternalLink } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, onSnapshot, query } from 'firebase/firestore';
 
+// --- TYPESCRIPT DEFINITIONS ---
+type Language = 'en' | 'sv';
+
+type Game = {
+  id: string;
+  title: string;
+  team1: string;
+  team2: string;
+  status: 'live' | 'upcoming' | 'past';
+  videoId: string;
+  startTime: string;
+  league: string;
+  sport?: 'Baseball' | 'Softball' | 'Unknown';
+  season?: string;
+  viewers?: string; 
+};
+
+type ViewState = 'home' | 'watch' | 'multiview' | 'teams' | 'teamDetail' | 'schedule' | 'archive';
+
+type Translations = Record<string, string>;
+
 // --- TRANSLATIONS DICTIONARY ---
-const i18n = {
+const i18n: Record<Language, Translations> = {
   en: {
     liveNow: "Live Now",
     upcoming: "Upcoming Broadcasts",
@@ -71,9 +92,10 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 // Helper function to format the start time based on language
-const formatTime = (timeStr, lang) => {
+const formatTime = (timeStr: string | undefined, lang: Language): string => {
+  if (!timeStr) return i18n[lang].timeTBD;
   if (timeStr === 'Live Now') return i18n[lang].liveBadge;
-  if (timeStr === 'Upcoming') return i18n[lang].timeTBD; // Fixed "KOMMANDE" date bug!
+  if (timeStr === 'Upcoming') return i18n[lang].timeTBD; 
   
   try {
     const d = new Date(timeStr);
@@ -88,12 +110,12 @@ const formatTime = (timeStr, lang) => {
 };
 
 export default function App() {
-  const [currentView, setCurrentView] = useState('home');
-  const [activeGame, setActiveGame] = useState(null);
-  const [games, setGames] = useState([]);
-  const [language, setLanguage] = useState('sv');
-  const [selectedTeam, setSelectedTeam] = useState(null);
-  const [currentTime, setCurrentTime] = useState(Date.now());
+  const [currentView, setCurrentView] = useState<ViewState>('home');
+  const [activeGame, setActiveGame] = useState<Game | null>(null);
+  const [games, setGames] = useState<Game[]>([]);
+  const [language, setLanguage] = useState<Language>('sv');
+  const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState<number>(Date.now());
 
   const t = i18n[language]; 
 
@@ -106,10 +128,10 @@ export default function App() {
   // Fetch games from Firebase automatically
   useEffect(() => {
     const q = query(collection(db, 'games'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const gamesData = [];
-      snapshot.forEach((doc) => {
-        gamesData.push({ id: doc.id, ...doc.data() });
+    const unsubscribe = onSnapshot(q, (snapshot: any) => {
+      const gamesData: Game[] = [];
+      snapshot.forEach((doc: any) => {
+        gamesData.push({ id: doc.id, ...doc.data() } as Game);
       });
       setGames(gamesData);
     });
@@ -117,8 +139,8 @@ export default function App() {
   }, []);
 
   // Safe time parser for perfect sorting
-  const getSortTime = (timeStr) => {
-    if (!timeStr) return 0;
+  const getSortTime = (timeStr?: string): number => {
+    if (!timeStr || timeStr === 'Upcoming') return 0;
     const time = new Date(timeStr).getTime();
     return isNaN(time) ? 0 : time;
   };
@@ -126,11 +148,11 @@ export default function App() {
   // Filter logic for specific teams
   let displayGames = games;
   if (currentView === 'teamDetail' && selectedTeam) {
-    displayGames = games.filter(g => g.team1 === selectedTeam || g.team2 === selectedTeam);
+    displayGames = games.filter((g: Game) => g.team1 === selectedTeam || g.team2 === selectedTeam);
   }
 
   // --- SMART SORTING & FILTERING LOGIC ---
-  const isSmartLive = (g) => {
+  const isSmartLive = (g: Game): boolean => {
     if (g.status === 'live') return true;
     if (g.status === 'upcoming') {
       const st = getSortTime(g.startTime);
@@ -141,7 +163,7 @@ export default function App() {
     return false;
   };
 
-  const isAbandoned = (g) => {
+  const isAbandoned = (g: Game): boolean => {
     if (g.status === 'upcoming') {
       const st = getSortTime(g.startTime);
       return st > 0 && currentTime > (st + 6 * 60 * 60 * 1000);
@@ -151,11 +173,11 @@ export default function App() {
 
   const liveGames = displayGames
     .filter(isSmartLive)
-    .sort((a, b) => getSortTime(b.startTime) - getSortTime(a.startTime)); 
+    .sort((a: Game, b: Game) => getSortTime(b.startTime) - getSortTime(a.startTime)); 
 
   const upcomingGames = displayGames
-    .filter(g => g.status === 'upcoming' && !isSmartLive(g) && !isAbandoned(g))
-    .sort((a, b) => {
+    .filter((g: Game) => g.status === 'upcoming' && !isSmartLive(g) && !isAbandoned(g))
+    .sort((a: Game, b: Game) => {
        const timeA = getSortTime(a.startTime);
        const timeB = getSortTime(b.startTime);
        if (timeA === 0 && timeB === 0) return 0;
@@ -165,17 +187,18 @@ export default function App() {
     }); 
 
   const pastGames = displayGames
-    .filter(g => g.status === 'past' || isAbandoned(g))
-    .sort((a, b) => getSortTime(b.startTime) - getSortTime(a.startTime));
+    .filter((g: Game) => g.status === 'past' || isAbandoned(g))
+    .sort((a: Game, b: Game) => getSortTime(b.startTime) - getSortTime(a.startTime));
 
-  const uniqueTeams = Array.from(new Set(games.flatMap(g => [g.team1, g.team2]))).filter(team => team && team !== 'TBD');
+  const uniqueTeams = Array.from(new Set(games.flatMap((g: Game) => [g.team1, g.team2])))
+    .filter((team): team is string => Boolean(team) && team !== 'TBD');
 
-  const playVideo = (game) => {
+  const playVideo = (game: Game) => {
     setActiveGame(game);
     setCurrentView('watch');
   };
 
-  const openTeam = (team) => {
+  const openTeam = (team: string) => {
     setSelectedTeam(team);
     setCurrentView('teamDetail');
   };
@@ -227,7 +250,7 @@ export default function App() {
         {(currentView === 'home' || currentView === 'teamDetail') && (
           <div className="p-4 md:p-8 space-y-8 animate-in fade-in">
             
-            {currentView === 'teamDetail' && (
+            {currentView === 'teamDetail' && selectedTeam && (
               <div className="flex items-center gap-4 mb-6 pb-6 border-b border-slate-800">
                 <button onClick={() => setCurrentView('teams')} className="p-2 bg-slate-800 rounded-full hover:bg-slate-700"><ChevronLeft size={20} /></button>
                 <h1 className="text-3xl font-bold">{selectedTeam}</h1>
@@ -242,7 +265,7 @@ export default function App() {
                   <h2 className="text-xl font-bold uppercase tracking-wider text-slate-200">{t.liveNow}</h2>
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {liveGames.map(game => (
+                  {liveGames.map((game: Game) => (
                     <GameCard key={game.id} game={game} lang={language} i18n={t} onClick={() => playVideo(game)} isLarge isSmartLive />
                   ))}
                 </div>
@@ -257,7 +280,7 @@ export default function App() {
                     <h2 className="text-xl font-bold uppercase tracking-wider text-slate-200">{t.upcoming}</h2>
                   </div>
                 <div className="flex overflow-x-auto pb-4 gap-4 snap-x">
-                  {upcomingGames.map(game => (
+                  {upcomingGames.map((game: Game) => (
                     <div key={game.id} className="min-w-[280px] snap-start">
                       <GameCard game={game} lang={language} i18n={t} onClick={() => playVideo(game)} />
                     </div>
@@ -275,7 +298,7 @@ export default function App() {
                     <h2 className="text-xl font-bold uppercase tracking-wider text-slate-200">{t.past}</h2>
                   </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {pastGames.slice(0, 6).map(game => (
+                  {pastGames.slice(0, 6).map((game: Game) => (
                     <GameCard key={game.id} game={game} lang={language} i18n={t} onClick={() => playVideo(game)} />
                   ))}
                 </div>
@@ -297,7 +320,7 @@ export default function App() {
                 <h1 className="text-3xl font-bold">{t.schedule}</h1>
              </div>
              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-               {upcomingGames.map(game => (
+               {upcomingGames.map((game: Game) => (
                   <GameCard key={game.id} game={game} lang={language} i18n={t} onClick={() => playVideo(game)} />
                ))}
                {upcomingGames.length === 0 && <p className="text-slate-500">{t.noLive}</p>}
@@ -313,7 +336,7 @@ export default function App() {
                 <h1 className="text-3xl font-bold">{t.archive}</h1>
              </div>
              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-               {pastGames.map(game => (
+               {pastGames.map((game: Game) => (
                   <GameCard key={game.id} game={game} lang={language} i18n={t} onClick={() => playVideo(game)} />
                ))}
              </div>
@@ -328,7 +351,7 @@ export default function App() {
                 <h1 className="text-3xl font-bold">{t.teams}</h1>
              </div>
              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-               {uniqueTeams.map((team, idx) => (
+               {uniqueTeams.map((team: string, idx: number) => (
                  <button 
                    key={idx} 
                    onClick={() => openTeam(team)}
@@ -430,7 +453,7 @@ export default function App() {
             </div>
             
             <div className={`grid gap-2 md:gap-4 flex-1 min-h-[50vh] ${liveGames.length === 1 ? 'grid-cols-1' : liveGames.length === 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-2'}`}>
-              {liveGames.map((game, idx) => (
+              {liveGames.map((game: Game, idx: number) => (
                 <div key={idx} className="bg-black rounded-lg overflow-hidden relative border border-slate-800 aspect-video group">
                   <div className="absolute top-2 left-2 z-10 bg-black/70 backdrop-blur px-2 py-1 rounded text-xs font-bold text-white flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></div>
@@ -462,7 +485,14 @@ export default function App() {
 }
 
 // --- SUBCOMPONENTS ---
-function NavItem({ icon, label, active, onClick }) {
+interface NavItemProps {
+  icon: ReactNode;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}
+
+function NavItem({ icon, label, active, onClick }: NavItemProps) {
   return (
     <button 
       onClick={onClick}
@@ -480,7 +510,16 @@ function NavItem({ icon, label, active, onClick }) {
   );
 }
 
-function GameCard({ game, lang, i18n, onClick, isLarge = false, isSmartLive = false }) {
+interface GameCardProps {
+  game: Game;
+  lang: Language;
+  i18n: Translations;
+  onClick: () => void;
+  isLarge?: boolean;
+  isSmartLive?: boolean;
+}
+
+function GameCard({ game, lang, i18n, onClick, isLarge = false, isSmartLive = false }: GameCardProps) {
   return (
     <div 
       onClick={onClick}
@@ -537,7 +576,6 @@ function GameCard({ game, lang, i18n, onClick, isLarge = false, isSmartLive = fa
         </h3>
         <div className="mt-auto">
           <p className="text-sm text-slate-400 flex items-center gap-1">
-            {/* BUG FIX: Använde 'language' istället för 'lang' här tidigare */}
             <Calendar size={14} /> {formatTime(game.startTime, lang)}
           </p>
         </div>
