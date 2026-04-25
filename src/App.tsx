@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Play, Calendar, History, LayoutGrid, MonitorPlay, ChevronLeft, Search, Users } from 'lucide-react';
+import { Play, Calendar, History, LayoutGrid, MonitorPlay, ChevronLeft, Search, Users, Eye } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, onSnapshot, query } from 'firebase/firestore';
 
@@ -64,6 +64,7 @@ type Game = {
   league: string;
   sport?: 'Baseball' | 'Softball' | 'Unknown';
   season?: string;
+  viewers?: string; // Added Viewer Count
 };
 
 // --- FIREBASE CONFIGURATION ---
@@ -137,29 +138,39 @@ export default function App() {
     displayGames = games.filter(g => g.team1 === selectedTeam || g.team2 === selectedTeam);
   }
 
-  // --- SORTING LOGIC ---
+  // --- SMART SORTING & FILTERING LOGIC ---
+
+  // Is the game starting within 10 mins AND not older than 6 hours?
+  const isSmartLive = (g: Game) => {
+    if (g.status === 'live') return true;
+    if (g.status === 'upcoming') {
+      const st = getSortTime(g.startTime);
+      const pastThreshold = currentTime >= (st - 10 * 60 * 1000);
+      const notExpired = currentTime <= (st + 6 * 60 * 60 * 1000);
+      return st > 0 && pastThreshold && notExpired;
+    }
+    return false;
+  };
+
+  // Did the stream get abandoned? (Stuck in upcoming > 6 hours past start time)
+  const isAbandoned = (g: Game) => {
+    if (g.status === 'upcoming') {
+      const st = getSortTime(g.startTime);
+      return st > 0 && currentTime > (st + 6 * 60 * 60 * 1000);
+    }
+    return false;
+  };
+
   const liveGames = displayGames
-    .filter(g => {
-      if (g.status === 'live') return true;
-      if (g.status === 'upcoming') {
-        const startTime = getSortTime(g.startTime);
-        if (startTime > 0 && currentTime >= (startTime - 10 * 60 * 1000)) return true;
-      }
-      return false;
-    })
+    .filter(isSmartLive)
     .sort((a, b) => getSortTime(b.startTime) - getSortTime(a.startTime)); // Newest first
 
   const upcomingGames = displayGames
-    .filter(g => {
-      if (g.status !== 'upcoming') return false;
-      const startTime = getSortTime(g.startTime);
-      if (startTime > 0 && currentTime >= (startTime - 10 * 60 * 1000)) return false;
-      return true;
-    })
+    .filter(g => g.status === 'upcoming' && !isSmartLive(g) && !isAbandoned(g))
     .sort((a, b) => getSortTime(a.startTime) - getSortTime(b.startTime)); // Soonest first (Ascending)
 
   const pastGames = displayGames
-    .filter(g => g.status === 'past')
+    .filter(g => g.status === 'past' || isAbandoned(g))
     .sort((a, b) => getSortTime(b.startTime) - getSortTime(a.startTime)); // Most recent first (Descending)
 
   // Extract unique teams for the Teams page
@@ -236,7 +247,7 @@ export default function App() {
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   {liveGames.map(game => (
-                    <GameCard key={game.id} game={game} lang={language} i18n={t} onClick={() => playVideo(game)} isLarge />
+                    <GameCard key={game.id} game={game} lang={language} i18n={t} onClick={() => playVideo(game)} isLarge isSmartLive />
                   ))}
                 </div>
               </section>
@@ -320,7 +331,7 @@ export default function App() {
                 src={`https://www.youtube.com/embed/${activeGame.videoId}?autoplay=1&rel=0`}
                 title="YouTube video player"
                 frameBorder="0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; web-share"
                 allowFullScreen
               ></iframe>
             </div>
@@ -356,7 +367,7 @@ export default function App() {
                     src={`https://www.youtube.com/embed/${game.videoId}?mute=1&rel=0`}
                     title={game.title}
                     frameBorder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; web-share"
                     allowFullScreen
                   ></iframe>
                 </div>
@@ -408,9 +419,10 @@ interface GameCardProps {
   i18n: any;
   onClick: () => void;
   isLarge?: boolean;
+  isSmartLive?: boolean;
 }
 
-function GameCard({ game, lang, i18n, onClick, isLarge = false }: GameCardProps) {
+function GameCard({ game, lang, i18n, onClick, isLarge = false, isSmartLive = false }: GameCardProps) {
   return (
     <div 
       onClick={onClick}
@@ -421,10 +433,18 @@ function GameCard({ game, lang, i18n, onClick, isLarge = false }: GameCardProps)
         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-100 via-slate-900 to-black"></div>
         
         <div className="absolute top-3 left-3 z-20 flex flex-col gap-1">
-          {game.status === 'live' || (game.status === 'upcoming' && new Date(game.startTime).getTime() > 0 && Date.now() >= new Date(game.startTime).getTime() - 10 * 60 * 1000) ? (
-            <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded flex items-center gap-1 shadow-lg shadow-red-500/30 w-max">
-              <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span> {i18n.liveBadge}
-            </span>
+          {isSmartLive ? (
+            <div className="flex gap-2">
+              <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded flex items-center gap-1 shadow-lg shadow-red-500/30 w-max">
+                <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span> {i18n.liveBadge}
+              </span>
+              {/* If viewer count exists in the DB, it displays here */}
+              {game.viewers && (
+                 <span className="bg-black/70 backdrop-blur border border-slate-700 text-slate-200 text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1 shadow-lg w-max">
+                   <Eye size={12} className="text-slate-400" /> {game.viewers}
+                 </span>
+              )}
+            </div>
           ) : game.status === 'upcoming' ? (
             <span className="bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded shadow-lg w-max">
               {i18n.upcomingBadge}
@@ -436,7 +456,7 @@ function GameCard({ game, lang, i18n, onClick, isLarge = false }: GameCardProps)
           )}
           
           {game.sport && (
-            <span className="bg-slate-800/80 backdrop-blur text-slate-200 text-[10px] font-bold px-2 py-0.5 rounded border border-slate-600 w-max uppercase tracking-wider">
+            <span className="bg-slate-800/80 backdrop-blur text-slate-200 text-[10px] font-bold px-2 py-0.5 rounded border border-slate-600 w-max uppercase tracking-wider mt-1">
               {game.sport}
             </span>
           )}
