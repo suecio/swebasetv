@@ -22,7 +22,6 @@ type Game = {
 };
 
 type ViewState = 'home' | 'watch' | 'multiview' | 'teams' | 'teamDetail' | 'schedule' | 'archive';
-
 type Translations = Record<string, string>;
 
 // --- TRANSLATIONS DICTIONARY ---
@@ -92,21 +91,39 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// Helper function to format the start time based on language
-const formatTime = (timeStr: string | undefined, lang: Language): string => {
-  if (!timeStr) return i18n[lang].timeTBD;
+// Helper function to format the start time based on language, with Regex Title Fallback
+const formatTime = (game: Game, lang: Language): string => {
+  let timeStr = game.startTime;
   if (timeStr === 'Live Now') return i18n[lang].liveBadge;
-  if (timeStr === 'Upcoming') return i18n[lang].timeTBD; 
+  
+  let isFallback = false;
+  // If the bot failed to get a time, try finding the date inside the YouTube Title!
+  if (!timeStr || timeStr === 'Upcoming') {
+     const match = game.title?.match(/(\d{4}-\d{2}-\d{2})/);
+     if (match) {
+        timeStr = `${match[1]}T12:00:00Z`; // Give it a temporary valid date
+        isFallback = true;
+     } else {
+        return i18n[lang].timeTBD;
+     }
+  }
   
   try {
     const d = new Date(timeStr);
-    if (isNaN(d.getTime())) return timeStr; 
+    if (isNaN(d.getTime())) return i18n[lang].timeTBD; 
     
+    // If we guessed the date from the title, just show the day (don't fake the clock time)
+    if (isFallback) {
+        return new Intl.DateTimeFormat(lang === 'sv' ? 'sv-SE' : 'en-US', {
+          weekday: 'short', month: 'short', day: 'numeric'
+        }).format(d);
+    }
+
     return new Intl.DateTimeFormat(lang === 'sv' ? 'sv-SE' : 'en-US', {
       weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
     }).format(d);
   } catch (e) {
-    return timeStr;
+    return i18n[lang].timeTBD;
   }
 };
 
@@ -120,13 +137,11 @@ export default function App() {
 
   const t = i18n[language]; 
 
-  // Timer for Smart-Live detection
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(Date.now()), 60000);
     return () => clearInterval(timer);
   }, []);
 
-  // Fetch games from Firebase automatically
   useEffect(() => {
     const q = query(collection(db, 'games'));
     const unsubscribe = onSnapshot(q, (snapshot: any) => {
@@ -139,14 +154,22 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Safe time parser for perfect sorting
-  const getSortTime = (timeStr?: string): number => {
-    if (!timeStr || timeStr === 'Upcoming') return 0;
-    const time = new Date(timeStr).getTime();
+  // Safe time parser with Regex Title Fallback for sorting
+  const getSortTime = (g: Game): number => {
+    let time = 0;
+    if (g.startTime && g.startTime !== 'Upcoming' && g.startTime !== 'Live Now') {
+      time = new Date(g.startTime).getTime();
+    }
+    // Fallback: Check if title has a date like YYYY-MM-DD
+    if ((isNaN(time) || time === 0) && g.title) {
+       const dateMatch = g.title.match(/(\d{4}-\d{2}-\d{2})/);
+       if (dateMatch) {
+          time = new Date(`${dateMatch[1]}T12:00:00Z`).getTime();
+       }
+    }
     return isNaN(time) ? 0 : time;
   };
 
-  // Filter logic for specific teams
   let displayGames = games;
   if (currentView === 'teamDetail' && selectedTeam) {
     displayGames = games.filter((g: Game) => g.team1 === selectedTeam || g.team2 === selectedTeam);
@@ -156,7 +179,7 @@ export default function App() {
   const isSmartLive = (g: Game): boolean => {
     if (g.status === 'live') return true;
     if (g.status === 'upcoming') {
-      const st = getSortTime(g.startTime);
+      const st = getSortTime(g);
       const pastThreshold = currentTime >= (st - 10 * 60 * 1000);
       const notExpired = currentTime <= (st + 6 * 60 * 60 * 1000);
       return st > 0 && pastThreshold && notExpired;
@@ -166,7 +189,7 @@ export default function App() {
 
   const isAbandoned = (g: Game): boolean => {
     if (g.status === 'upcoming') {
-      const st = getSortTime(g.startTime);
+      const st = getSortTime(g);
       return st > 0 && currentTime > (st + 6 * 60 * 60 * 1000);
     }
     return false;
@@ -174,22 +197,22 @@ export default function App() {
 
   const liveGames = displayGames
     .filter(isSmartLive)
-    .sort((a: Game, b: Game) => getSortTime(b.startTime) - getSortTime(a.startTime)); 
+    .sort((a: Game, b: Game) => getSortTime(b) - getSortTime(a)); 
 
   const upcomingGames = displayGames
     .filter((g: Game) => g.status === 'upcoming' && !isSmartLive(g) && !isAbandoned(g))
     .sort((a: Game, b: Game) => {
-       const timeA = getSortTime(a.startTime);
-       const timeB = getSortTime(b.startTime);
+       const timeA = getSortTime(a);
+       const timeB = getSortTime(b);
        if (timeA === 0 && timeB === 0) return 0;
-       if (timeA === 0) return 1; // Push missing dates to the bottom
+       if (timeA === 0) return 1; 
        if (timeB === 0) return -1;
        return timeA - timeB; 
     }); 
 
   const pastGames = displayGames
     .filter((g: Game) => g.status === 'past' || isAbandoned(g))
-    .sort((a: Game, b: Game) => getSortTime(b.startTime) - getSortTime(a.startTime));
+    .sort((a: Game, b: Game) => getSortTime(b) - getSortTime(a));
 
   const uniqueTeams = Array.from(new Set(games.flatMap((g: Game) => [g.team1, g.team2])))
     .filter((team): team is string => Boolean(team) && team !== 'TBD');
@@ -380,7 +403,7 @@ export default function App() {
                 <div className="flex items-center gap-2 text-sm text-slate-400 mt-1">
                   <span>{activeGame.league}</span>
                   <span>•</span>
-                  <span>{activeGame.status === 'live' || isSmartLive(activeGame) ? t.liveBadge : formatTime(activeGame.startTime, language)}</span>
+                  <span>{activeGame.status === 'live' || isSmartLive(activeGame) ? t.liveBadge : formatTime(activeGame, language)}</span>
                   
                   {/* VIEWERS DISPLAY IN HEADER */}
                   {(activeGame.status === 'live' || isSmartLive(activeGame)) && activeGame.viewers && (
@@ -577,7 +600,7 @@ function GameCard({ game, lang, i18n, onClick, isLarge = false, isSmartLive = fa
         </h3>
         <div className="mt-auto">
           <p className="text-sm text-slate-400 flex items-center gap-1">
-            <Calendar size={14} /> {formatTime(game.startTime, lang)}
+            <Calendar size={14} /> {formatTime(game, lang)}
           </p>
         </div>
       </div>
