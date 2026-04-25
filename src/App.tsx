@@ -537,7 +537,8 @@ function GameCard({ game, lang, i18n, onClick, isLarge = false, isSmartLive = fa
         </h3>
         <div className="mt-auto">
           <p className="text-sm text-slate-400 flex items-center gap-1">
-            <Calendar size={14} /> {formatTime(game.startTime, language)}
+            {/* BUG FIX: Använde 'language' istället för 'lang' här tidigare */}
+            <Calendar size={14} /> {formatTime(game.startTime, lang)}
           </p>
         </div>
       </div>
