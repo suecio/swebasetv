@@ -53,7 +53,6 @@ const i18n = {
 
 type Language = 'en' | 'sv';
 
-// --- TYPESCRIPT DEFINITIONS ---
 type Game = {
   id: string;
   title: string;
@@ -103,8 +102,15 @@ export default function App() {
   const [games, setGames] = useState<Game[]>([]);
   const [language, setLanguage] = useState<Language>('sv');
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
+  const [currentTime, setCurrentTime] = useState(Date.now());
 
   const t = i18n[language]; 
+
+  // Timer for Smart-Live detection
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Fetch games from Firebase automatically
   useEffect(() => {
@@ -119,29 +125,42 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Safe time parser for perfect sorting
+  const getSortTime = (timeStr: string) => {
+    const time = new Date(timeStr).getTime();
+    return isNaN(time) ? 0 : time;
+  };
+
   // Filter logic
   let displayGames = games;
   if (currentView === 'teamDetail' && selectedTeam) {
     displayGames = games.filter(g => g.team1 === selectedTeam || g.team2 === selectedTeam);
   }
 
-  // Helper function to safely parse dates for sorting
-  const getSortTime = (timeStr: string) => {
-    const time = new Date(timeStr).getTime();
-    return isNaN(time) ? 0 : time;
-  };
-
+  // --- SORTING LOGIC ---
   const liveGames = displayGames
-    .filter(g => g.status === 'live')
-    .sort((a, b) => getSortTime(b.startTime) - getSortTime(a.startTime)); // Newest live first
+    .filter(g => {
+      if (g.status === 'live') return true;
+      if (g.status === 'upcoming') {
+        const startTime = getSortTime(g.startTime);
+        if (startTime > 0 && currentTime >= (startTime - 10 * 60 * 1000)) return true;
+      }
+      return false;
+    })
+    .sort((a, b) => getSortTime(b.startTime) - getSortTime(a.startTime)); // Newest first
 
   const upcomingGames = displayGames
-    .filter(g => g.status === 'upcoming')
-    .sort((a, b) => getSortTime(a.startTime) - getSortTime(b.startTime)); // Soonest upcoming first
+    .filter(g => {
+      if (g.status !== 'upcoming') return false;
+      const startTime = getSortTime(g.startTime);
+      if (startTime > 0 && currentTime >= (startTime - 10 * 60 * 1000)) return false;
+      return true;
+    })
+    .sort((a, b) => getSortTime(a.startTime) - getSortTime(b.startTime)); // Soonest first (Ascending)
 
   const pastGames = displayGames
     .filter(g => g.status === 'past')
-    .sort((a, b) => getSortTime(b.startTime) - getSortTime(a.startTime)); // Most recently played first
+    .sort((a, b) => getSortTime(b.startTime) - getSortTime(a.startTime)); // Most recent first (Descending)
 
   // Extract unique teams for the Teams page
   const uniqueTeams = Array.from(new Set(games.flatMap(g => [g.team1, g.team2]))).filter(team => team && team !== 'TBD');
@@ -192,7 +211,6 @@ export default function App() {
         <NavItem icon={<Play />} label={t.home} active={currentView === 'home'} onClick={() => setCurrentView('home')} />
         <NavItem icon={<LayoutGrid />} label={t.multiview} active={currentView === 'multiview'} onClick={() => setCurrentView('multiview')} />
         <NavItem icon={<Users />} label={t.teams} active={currentView === 'teams' || currentView === 'teamDetail'} onClick={() => setCurrentView('teams')} />
-        <NavItem icon={<Calendar />} label={t.schedule} active={false} onClick={() => alert("Schedule coming soon")} />
       </nav>
 
       {/* Main Content Area */}
@@ -299,10 +317,10 @@ export default function App() {
             <div className="w-full aspect-video bg-black flex items-center justify-center relative shadow-2xl">
               <iframe
                 className="absolute top-0 left-0 w-full h-full"
-                src={`https://www.youtube.com/embed/${activeGame.videoId}?autoplay=1`}
+                src={`https://www.youtube.com/embed/${activeGame.videoId}?autoplay=1&rel=0`}
                 title="YouTube video player"
                 frameBorder="0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                 allowFullScreen
               ></iframe>
             </div>
@@ -335,9 +353,10 @@ export default function App() {
                   </div>
                   <iframe
                     className="w-full h-full"
-                    src={`https://www.youtube.com/embed/${game.videoId}?mute=1`}
+                    src={`https://www.youtube.com/embed/${game.videoId}?mute=1&rel=0`}
                     title={game.title}
                     frameBorder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                     allowFullScreen
                   ></iframe>
                 </div>
@@ -358,7 +377,6 @@ export default function App() {
 }
 
 // --- SUBCOMPONENTS ---
-
 interface NavItemProps {
   icon: React.ReactNode;
   label: string;
@@ -384,7 +402,6 @@ function NavItem({ icon, label, active, onClick }: NavItemProps) {
   );
 }
 
-// Ensure TypeScript strictly knows what this component receives!
 interface GameCardProps {
   game: Game;
   lang: Language;
@@ -404,21 +421,20 @@ function GameCard({ game, lang, i18n, onClick, isLarge = false }: GameCardProps)
         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-100 via-slate-900 to-black"></div>
         
         <div className="absolute top-3 left-3 z-20 flex flex-col gap-1">
-          {game.status === 'live' && (
+          {game.status === 'live' || (game.status === 'upcoming' && new Date(game.startTime).getTime() > 0 && Date.now() >= new Date(game.startTime).getTime() - 10 * 60 * 1000) ? (
             <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded flex items-center gap-1 shadow-lg shadow-red-500/30 w-max">
               <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span> {i18n.liveBadge}
             </span>
-          )}
-          {game.status === 'upcoming' && (
+          ) : game.status === 'upcoming' ? (
             <span className="bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded shadow-lg w-max">
               {i18n.upcomingBadge}
             </span>
-          )}
-          {game.status === 'past' && (
+          ) : (
             <span className="bg-slate-700 text-slate-300 text-xs font-bold px-2 py-1 rounded shadow-lg w-max">
               {i18n.finalBadge}
             </span>
           )}
+          
           {game.sport && (
             <span className="bg-slate-800/80 backdrop-blur text-slate-200 text-[10px] font-bold px-2 py-0.5 rounded border border-slate-600 w-max uppercase tracking-wider">
               {game.sport}
