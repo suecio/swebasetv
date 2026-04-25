@@ -1,7 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, setDoc } from "firebase/firestore";
 
-// 1. Firebase-konfiguration
 const firebaseConfig = {
   apiKey: "AIzaSyCIhHn43vsrzHFOmaTIRE7vWHTptgoWNJ4",
   authDomain: "swebasetv.firebaseapp.com",
@@ -16,7 +15,6 @@ const db = getFirestore(app);
 
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
 
-// --- SÄSONGSINSTÄLLNINGAR ---
 const TARGET_YEAR = 2026; 
 const PUBLISHED_AFTER = `${TARGET_YEAR}-01-01T00:00:00Z`;
 const PUBLISHED_BEFORE = `${TARGET_YEAR}-12-31T23:59:59Z`;
@@ -59,39 +57,38 @@ async function fetchAndSave(channel, status) {
     const response = await fetch(url);
     const data = await response.json();
 
+    // SÄKERHETSSPÄRR 1: Om kvoten är slut, stoppa boten direkt så att inget förstörs!
+    if (data.error && data.error.code === 403) {
+      console.error("🚨 Kritisk API Quota Error! Stoppar boten för att skydda databasen.");
+      process.exit(1); 
+    }
+
     if (data.items && data.items.length > 0) {
       for (const item of data.items) {
         const videoId = item.id.videoId;
         const title = item.snippet.title;
 
-        // --- TEAM 2 AUTO-DETECTION ---
         let team2 = "TBD";
         const titleLower = title.toLowerCase();
 
-        // 1. First, check if any of our known teams are mentioned in the title
         for (const possibleTeam of CHANNELS) {
-          // Prevent setting Team 1 as Team 2, and check if the title contains their name
           if (possibleTeam.teamName !== channel.teamName && titleLower.includes(possibleTeam.teamName.toLowerCase())) {
             team2 = possibleTeam.teamName;
             break;
           }
         }
 
-        // 2. Fallback: If it's still TBD, try to guess based on "vs" or "mot"
         if (team2 === "TBD") {
           const match = title.match(/ (vs|mot|-) (.+)/i);
           if (match && match[2]) {
              let guessedName = match[2].trim();
-             // Clean up extra text like " - Game 1"
              guessedName = guessedName.split('-')[0].split('|')[0].trim(); 
              if (guessedName.length > 2) {
                  team2 = guessedName;
              }
           }
         }
-        // -----------------------------
 
-        // Variables to hold extra data
         let exactStartTime = status === 'live' ? 'Live Now' : 'Upcoming';
         let liveViewers = null;
 
@@ -99,6 +96,13 @@ async function fetchAndSave(channel, status) {
           const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&id=${videoId}&key=${YOUTUBE_API_KEY}`;
           const detailsRes = await fetch(detailsUrl);
           const detailsData = await detailsRes.json();
+          
+          // SÄKERHETSSPÄRR 2: Klagar YouTube när vi ber om tid? Hoppa över denna video idag!
+          if (detailsData.error) {
+              console.log(`⚠️ Kunde inte hämta exakt tid för ${title} (möjligt kvot-fel). Hoppar över för att inte skriva över bra data.`);
+              continue; // Avbryter just denna match och går vidare till nästa
+          }
+
           if (detailsData.items && detailsData.items.length > 0) {
             const streamDetails = detailsData.items[0].liveStreamingDetails;
             if (streamDetails) {
@@ -113,7 +117,7 @@ async function fetchAndSave(channel, status) {
             }
           }
         } catch (e) {
-          console.log("Kunde inte hämta exakt starttid/tittare", e);
+          console.log("Nätverksfel vid detaljhämtning", e);
         }
 
         if (exactStartTime === 'Upcoming' && status === 'completed') {
@@ -129,7 +133,7 @@ async function fetchAndSave(channel, status) {
         const gameData = {
           title: title,
           team1: channel.teamName, 
-          team2: team2, // Now uses our new Auto-Detected opponent!
+          team2: team2,
           status: dbStatus,
           videoId: videoId,
           startTime: exactStartTime,
