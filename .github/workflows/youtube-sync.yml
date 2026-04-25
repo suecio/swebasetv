@@ -2,9 +2,13 @@ name: Sync YouTube Streams
 
 on:
   schedule:
-    # This weird string means: "Run every hour, on the hour"
-    - cron: '0 * * * *'
-  workflow_dispatch: # This adds a button so you can click "Run Now" anytime
+    # Vardagar (Mån-Fre): Kör varje timme mellan 17:00 - 23:00 Svensk sommartid (15:00 - 21:00 UTC)
+    - cron: '0 15-21 * * 1-5'
+    
+    # Helger (Lör-Sön): Kör varje timme mellan 11:00 - 20:00 Svensk sommartid (09:00 - 18:00 UTC)
+    - cron: '0 9-18 * * 0,6'
+    
+  workflow_dispatch: # Denna knapp låter dig fortfarande köra skriptet manuellt när som helst!
 
 jobs:
   update-database:
