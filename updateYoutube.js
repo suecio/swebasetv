@@ -64,9 +64,36 @@ async function fetchAndSave(channel, status) {
         const videoId = item.id.videoId;
         const title = item.snippet.title;
 
+        // --- TEAM 2 AUTO-DETECTION ---
+        let team2 = "TBD";
+        const titleLower = title.toLowerCase();
+
+        // 1. First, check if any of our known teams are mentioned in the title
+        for (const possibleTeam of CHANNELS) {
+          // Prevent setting Team 1 as Team 2, and check if the title contains their name
+          if (possibleTeam.teamName !== channel.teamName && titleLower.includes(possibleTeam.teamName.toLowerCase())) {
+            team2 = possibleTeam.teamName;
+            break;
+          }
+        }
+
+        // 2. Fallback: If it's still TBD, try to guess based on "vs" or "mot"
+        if (team2 === "TBD") {
+          const match = title.match(/ (vs|mot|-) (.+)/i);
+          if (match && match[2]) {
+             let guessedName = match[2].trim();
+             // Clean up extra text like " - Game 1"
+             guessedName = guessedName.split('-')[0].split('|')[0].trim(); 
+             if (guessedName.length > 2) {
+                 team2 = guessedName;
+             }
+          }
+        }
+        // -----------------------------
+
         // Variables to hold extra data
         let exactStartTime = status === 'live' ? 'Live Now' : 'Upcoming';
-        let liveViewers = null; // New viewer variable
+        let liveViewers = null;
 
         try {
           const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&id=${videoId}&key=${YOUTUBE_API_KEY}`;
@@ -75,13 +102,11 @@ async function fetchAndSave(channel, status) {
           if (detailsData.items && detailsData.items.length > 0) {
             const streamDetails = detailsData.items[0].liveStreamingDetails;
             if (streamDetails) {
-              // 1. Get Time
               if (status === 'completed' && streamDetails.actualStartTime) {
                 exactStartTime = streamDetails.actualStartTime;
               } else if (streamDetails.scheduledStartTime) {
                 exactStartTime = streamDetails.scheduledStartTime;
               }
-              // 2. Get Live Viewers (Only available if the stream is currently live)
               if (status === 'live' && streamDetails.concurrentViewers) {
                  liveViewers = streamDetails.concurrentViewers;
               }
@@ -95,7 +120,6 @@ async function fetchAndSave(channel, status) {
             exactStartTime = item.snippet.publishedAt;
         }
 
-        const titleLower = title.toLowerCase();
         const sport = titleLower.includes('softboll') || titleLower.includes('softball') 
           ? 'Softball' 
           : 'Baseball';
@@ -105,7 +129,7 @@ async function fetchAndSave(channel, status) {
         const gameData = {
           title: title,
           team1: channel.teamName, 
-          team2: "TBD", 
+          team2: team2, // Now uses our new Auto-Detected opponent!
           status: dbStatus,
           videoId: videoId,
           startTime: exactStartTime,
@@ -114,13 +138,12 @@ async function fetchAndSave(channel, status) {
           season: TARGET_YEAR.toString()
         };
 
-        // Only save viewers to the database if it actually exists!
         if (liveViewers) {
           gameData.viewers = liveViewers;
         }
 
         await setDoc(doc(db, "games", videoId), gameData);
-        console.log(`Sparade ${dbStatus}-match: ${title} (${exactStartTime}) - Tittare: ${liveViewers || 'N/A'}`);
+        console.log(`Sparade ${dbStatus}-match: ${channel.teamName} vs ${team2} (${exactStartTime})`);
       }
     }
   } catch (error) {
