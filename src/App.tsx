@@ -370,6 +370,7 @@ function NavItem({ icon, label, active, onClick }: NavItemProps) {
   );
 }
 
+// Ensure TypeScript strictly knows what this component receives!
 interface GameCardProps {
   game: Game;
   lang: Language;
