@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Play, Calendar, History, LayoutGrid, MonitorPlay, ChevronLeft, Search, Users, Globe } from 'lucide-react';
+import { Play, Calendar, History, LayoutGrid, MonitorPlay, ChevronLeft, Search, Users } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, onSnapshot, query } from 'firebase/firestore';
 
@@ -142,8 +142,6 @@ export default function App() {
     setSelectedTeam(team);
     setCurrentView('teamDetail');
   };
-
-  const toggleLanguage = () => setLanguage(prev => prev === 'en' ? 'sv' : 'en');
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 font-sans pb-20 md:pb-0 flex flex-col md:flex-row">
