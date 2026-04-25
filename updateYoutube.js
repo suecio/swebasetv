@@ -14,11 +14,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// 2. YouTube-konfiguration
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
 
 // --- SÄSONGSINSTÄLLNINGAR ---
-// Ändra detta årtal för att skrapa tidigare säsonger (t.ex. 2025)
 const TARGET_YEAR = 2026; 
 const PUBLISHED_AFTER = `${TARGET_YEAR}-01-01T00:00:00Z`;
 const PUBLISHED_BEFORE = `${TARGET_YEAR}-12-31T23:59:59Z`;
@@ -43,7 +41,6 @@ async function fetchGames() {
     console.log(`Letar i ${channel.teamName}...`);
     await fetchAndSave(channel, 'live');
     await fetchAndSave(channel, 'upcoming');
-    // Kolla efter avslutade (completed) sändningar för det valda året
     await fetchAndSave(channel, 'completed'); 
   }
 
@@ -53,10 +50,8 @@ async function fetchGames() {
 
 async function fetchAndSave(channel, status) {
   try {
-    // maxResults=50 ensures we get a good chunk of the archive
     let url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${channel.id}&eventType=${status}&type=video&key=${YOUTUBE_API_KEY}&maxResults=50`;
     
-    // Om vi letar efter gamla matcher, begränsa sökningen till valt år
     if (status === 'completed') {
       url += `&publishedAfter=${PUBLISHED_AFTER}&publishedBefore=${PUBLISHED_BEFORE}`;
     }
@@ -69,8 +64,10 @@ async function fetchAndSave(channel, status) {
         const videoId = item.id.videoId;
         const title = item.snippet.title;
 
-        // Hämta exakt starttid
+        // Variables to hold extra data
         let exactStartTime = status === 'live' ? 'Live Now' : 'Upcoming';
+        let liveViewers = null; // New viewer variable
+
         try {
           const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&id=${videoId}&key=${YOUTUBE_API_KEY}`;
           const detailsRes = await fetch(detailsUrl);
@@ -78,18 +75,22 @@ async function fetchAndSave(channel, status) {
           if (detailsData.items && detailsData.items.length > 0) {
             const streamDetails = detailsData.items[0].liveStreamingDetails;
             if (streamDetails) {
+              // 1. Get Time
               if (status === 'completed' && streamDetails.actualStartTime) {
                 exactStartTime = streamDetails.actualStartTime;
               } else if (streamDetails.scheduledStartTime) {
                 exactStartTime = streamDetails.scheduledStartTime;
               }
+              // 2. Get Live Viewers (Only available if the stream is currently live)
+              if (status === 'live' && streamDetails.concurrentViewers) {
+                 liveViewers = streamDetails.concurrentViewers;
+              }
             }
           }
         } catch (e) {
-          console.log("Kunde inte hämta exakt starttid", e);
+          console.log("Kunde inte hämta exakt starttid/tittare", e);
         }
 
-        // Fallback: If YouTube stripped the live streaming details from an old video, use publish date
         if (exactStartTime === 'Upcoming' && status === 'completed') {
             exactStartTime = item.snippet.publishedAt;
         }
@@ -99,7 +100,6 @@ async function fetchAndSave(channel, status) {
           ? 'Softball' 
           : 'Baseball';
 
-        // Konvertera YouTubes 'completed' till vår apps 'past'
         const dbStatus = status === 'completed' ? 'past' : status;
 
         const gameData = {
@@ -111,11 +111,16 @@ async function fetchAndSave(channel, status) {
           startTime: exactStartTime,
           league: "Elitserien",
           sport: sport,
-          season: TARGET_YEAR.toString() // Lägg till säsongen!
+          season: TARGET_YEAR.toString()
         };
 
+        // Only save viewers to the database if it actually exists!
+        if (liveViewers) {
+          gameData.viewers = liveViewers;
+        }
+
         await setDoc(doc(db, "games", videoId), gameData);
-        console.log(`Sparade ${dbStatus}-match: ${title} (${exactStartTime})`);
+        console.log(`Sparade ${dbStatus}-match: ${title} (${exactStartTime}) - Tittare: ${liveViewers || 'N/A'}`);
       }
     }
   } catch (error) {
