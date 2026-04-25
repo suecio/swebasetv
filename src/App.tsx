@@ -125,9 +125,23 @@ export default function App() {
     displayGames = games.filter(g => g.team1 === selectedTeam || g.team2 === selectedTeam);
   }
 
-  const liveGames = displayGames.filter(g => g.status === 'live');
-  const upcomingGames = displayGames.filter(g => g.status === 'upcoming');
-  const pastGames = displayGames.filter(g => g.status === 'past');
+  // Helper function to safely parse dates for sorting
+  const getSortTime = (timeStr: string) => {
+    const time = new Date(timeStr).getTime();
+    return isNaN(time) ? 0 : time;
+  };
+
+  const liveGames = displayGames
+    .filter(g => g.status === 'live')
+    .sort((a, b) => getSortTime(b.startTime) - getSortTime(a.startTime)); // Newest live first
+
+  const upcomingGames = displayGames
+    .filter(g => g.status === 'upcoming')
+    .sort((a, b) => getSortTime(a.startTime) - getSortTime(b.startTime)); // Soonest upcoming first
+
+  const pastGames = displayGames
+    .filter(g => g.status === 'past')
+    .sort((a, b) => getSortTime(b.startTime) - getSortTime(a.startTime)); // Most recently played first
 
   // Extract unique teams for the Teams page
   const uniqueTeams = Array.from(new Set(games.flatMap(g => [g.team1, g.team2]))).filter(team => team && team !== 'TBD');
