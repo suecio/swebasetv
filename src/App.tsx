@@ -91,17 +91,28 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// Helper function to format the start time based on language, with Regex Title Fallback
+// Hjälpfunktion för att plocka ut BARA klockslaget (t.ex. "15:00") för LIVE-knappen
+const getOnlyTime = (timeStr: string | undefined): string => {
+  if (!timeStr || timeStr === 'Live Now' || timeStr === 'Upcoming') return '';
+  try {
+    const d = new Date(timeStr);
+    if (isNaN(d.getTime())) return '';
+    return new Intl.DateTimeFormat('sv-SE', { hour: '2-digit', minute: '2-digit' }).format(d);
+  } catch {
+    return '';
+  }
+};
+
+// Helper function to format the full start time based on language
 const formatTime = (game: Game, lang: Language): string => {
   let timeStr = game.startTime;
   if (timeStr === 'Live Now') return i18n[lang].liveBadge;
   
   let isFallback = false;
-  // If the bot failed to get a time, try finding the date inside the YouTube Title!
   if (!timeStr || timeStr === 'Upcoming') {
      const match = game.title?.match(/(\d{4}-\d{2}-\d{2})/);
      if (match) {
-        timeStr = `${match[1]}T12:00:00Z`; // Give it a temporary valid date
+        timeStr = `${match[1]}T12:00:00Z`; 
         isFallback = true;
      } else {
         return i18n[lang].timeTBD;
@@ -112,7 +123,6 @@ const formatTime = (game: Game, lang: Language): string => {
     const d = new Date(timeStr);
     if (isNaN(d.getTime())) return i18n[lang].timeTBD; 
     
-    // If we guessed the date from the title, just show the day (don't fake the clock time)
     if (isFallback) {
         return new Intl.DateTimeFormat(lang === 'sv' ? 'sv-SE' : 'en-US', {
           weekday: 'short', month: 'short', day: 'numeric'
@@ -154,13 +164,11 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Safe time parser with Regex Title Fallback for sorting
   const getSortTime = (g: Game): number => {
     let time = 0;
     if (g.startTime && g.startTime !== 'Upcoming' && g.startTime !== 'Live Now') {
       time = new Date(g.startTime).getTime();
     }
-    // Fallback: Check if title has a date like YYYY-MM-DD
     if ((isNaN(time) || time === 0) && g.title) {
        const dateMatch = g.title.match(/(\d{4}-\d{2}-\d{2})/);
        if (dateMatch) {
@@ -403,7 +411,11 @@ export default function App() {
                 <div className="flex items-center gap-2 text-sm text-slate-400 mt-1">
                   <span>{activeGame.league}</span>
                   <span>•</span>
-                  <span>{activeGame.status === 'live' || isSmartLive(activeGame) ? t.liveBadge : formatTime(activeGame, language)}</span>
+                  <span>
+                    {activeGame.status === 'live' || isSmartLive(activeGame) 
+                      ? `${t.liveBadge} ${getOnlyTime(activeGame.startTime) ? `• ${getOnlyTime(activeGame.startTime)}` : ''}` 
+                      : formatTime(activeGame, language)}
+                  </span>
                   
                   {/* VIEWERS DISPLAY IN HEADER */}
                   {(activeGame.status === 'live' || isSmartLive(activeGame)) && activeGame.viewers && (
@@ -544,6 +556,8 @@ interface GameCardProps {
 }
 
 function GameCard({ game, lang, i18n, onClick, isLarge = false, isSmartLive = false }: GameCardProps) {
+  const liveTime = getOnlyTime(game.startTime);
+
   return (
     <div 
       onClick={onClick}
@@ -557,7 +571,8 @@ function GameCard({ game, lang, i18n, onClick, isLarge = false, isSmartLive = fa
           {isSmartLive || game.status === 'live' ? (
             <div className="flex gap-2">
               <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded flex items-center gap-1 shadow-lg shadow-red-500/30 w-max">
-                <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span> {i18n.liveBadge}
+                <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span> 
+                {i18n.liveBadge}{liveTime ? ` • ${liveTime}` : ''}
               </span>
               {/* DISPLAY VIEWERS ON HOMESCREEN CARD */}
               {game.viewers && (
