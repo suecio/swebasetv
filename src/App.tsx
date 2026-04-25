@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Play, Calendar, History, LayoutGrid, MonitorPlay, ChevronLeft, Search, Users, Eye } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Play, Calendar, History, LayoutGrid, MonitorPlay, ChevronLeft, Search, Users, Eye, ExternalLink } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, onSnapshot, query } from 'firebase/firestore';
 
@@ -25,7 +25,10 @@ const i18n = {
     finalBadge: "FINAL",
     selectTeam: "Select a Team",
     back: "Back",
-    search: "Search"
+    search: "Search",
+    timeTBD: "Time TBD",
+    openInYoutube: "Open in YouTube",
+    pipHint: "Click here for native Picture-in-Picture, full live chat, and Chromecast/AirPlay features."
   },
   sv: {
     liveNow: "Live Just Nu",
@@ -47,24 +50,11 @@ const i18n = {
     finalBadge: "SLUT",
     selectTeam: "Välj ett Lag",
     back: "Tillbaka",
-    search: "Sök"
+    search: "Sök",
+    timeTBD: "Tid ej fastställd",
+    openInYoutube: "Öppna i YouTube",
+    pipHint: "Klicka här för inbyggd Bild-i-Bild, full live-chatt och Chromecast/AirPlay."
   }
-};
-
-type Language = 'en' | 'sv';
-
-type Game = {
-  id: string;
-  title: string;
-  team1: string;
-  team2: string;
-  status: 'live' | 'upcoming' | 'past';
-  videoId: string;
-  startTime: string;
-  league: string;
-  sport?: 'Baseball' | 'Softball' | 'Unknown';
-  season?: string;
-  viewers?: string; 
 };
 
 // --- FIREBASE CONFIGURATION ---
@@ -81,9 +71,9 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 // Helper function to format the start time based on language
-const formatTime = (timeStr: string, lang: Language) => {
+const formatTime = (timeStr, lang) => {
   if (timeStr === 'Live Now') return i18n[lang].liveBadge;
-  if (timeStr === 'Upcoming') return i18n[lang].upcomingBadge;
+  if (timeStr === 'Upcoming') return i18n[lang].timeTBD; // Fixed "KOMMANDE" date bug!
   
   try {
     const d = new Date(timeStr);
@@ -98,12 +88,11 @@ const formatTime = (timeStr: string, lang: Language) => {
 };
 
 export default function App() {
-  // ADDED 'schedule' and 'archive' to the views
-  const [currentView, setCurrentView] = useState<'home' | 'watch' | 'multiview' | 'teams' | 'teamDetail' | 'schedule' | 'archive'>('home');
-  const [activeGame, setActiveGame] = useState<Game | null>(null);
-  const [games, setGames] = useState<Game[]>([]);
-  const [language, setLanguage] = useState<Language>('sv');
-  const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
+  const [currentView, setCurrentView] = useState('home');
+  const [activeGame, setActiveGame] = useState(null);
+  const [games, setGames] = useState([]);
+  const [language, setLanguage] = useState('sv');
+  const [selectedTeam, setSelectedTeam] = useState(null);
   const [currentTime, setCurrentTime] = useState(Date.now());
 
   const t = i18n[language]; 
@@ -117,10 +106,10 @@ export default function App() {
   // Fetch games from Firebase automatically
   useEffect(() => {
     const q = query(collection(db, 'games'));
-    const unsubscribe = onSnapshot(q, (snapshot: any) => {
-      const gamesData: Game[] = [];
-      snapshot.forEach((doc: any) => {
-        gamesData.push({ id: doc.id, ...doc.data() } as Game);
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const gamesData = [];
+      snapshot.forEach((doc) => {
+        gamesData.push({ id: doc.id, ...doc.data() });
       });
       setGames(gamesData);
     });
@@ -128,20 +117,20 @@ export default function App() {
   }, []);
 
   // Safe time parser for perfect sorting
-  const getSortTime = (timeStr: string) => {
+  const getSortTime = (timeStr) => {
+    if (!timeStr) return 0;
     const time = new Date(timeStr).getTime();
     return isNaN(time) ? 0 : time;
   };
 
-  // Filter logic
+  // Filter logic for specific teams
   let displayGames = games;
   if (currentView === 'teamDetail' && selectedTeam) {
     displayGames = games.filter(g => g.team1 === selectedTeam || g.team2 === selectedTeam);
   }
 
   // --- SMART SORTING & FILTERING LOGIC ---
-
-  const isSmartLive = (g: Game) => {
+  const isSmartLive = (g) => {
     if (g.status === 'live') return true;
     if (g.status === 'upcoming') {
       const st = getSortTime(g.startTime);
@@ -152,7 +141,7 @@ export default function App() {
     return false;
   };
 
-  const isAbandoned = (g: Game) => {
+  const isAbandoned = (g) => {
     if (g.status === 'upcoming') {
       const st = getSortTime(g.startTime);
       return st > 0 && currentTime > (st + 6 * 60 * 60 * 1000);
@@ -166,7 +155,14 @@ export default function App() {
 
   const upcomingGames = displayGames
     .filter(g => g.status === 'upcoming' && !isSmartLive(g) && !isAbandoned(g))
-    .sort((a, b) => getSortTime(a.startTime) - getSortTime(b.startTime)); 
+    .sort((a, b) => {
+       const timeA = getSortTime(a.startTime);
+       const timeB = getSortTime(b.startTime);
+       if (timeA === 0 && timeB === 0) return 0;
+       if (timeA === 0) return 1; // Push missing dates to the bottom
+       if (timeB === 0) return -1;
+       return timeA - timeB; 
+    }); 
 
   const pastGames = displayGames
     .filter(g => g.status === 'past' || isAbandoned(g))
@@ -174,12 +170,12 @@ export default function App() {
 
   const uniqueTeams = Array.from(new Set(games.flatMap(g => [g.team1, g.team2]))).filter(team => team && team !== 'TBD');
 
-  const playVideo = (game: Game) => {
+  const playVideo = (game) => {
     setActiveGame(game);
     setCurrentView('watch');
   };
 
-  const openTeam = (team: string) => {
+  const openTeam = (team) => {
     setSelectedTeam(team);
     setCurrentView('teamDetail');
   };
@@ -190,7 +186,7 @@ export default function App() {
       {/* Mobile Top Nav */}
       <div className="md:hidden flex items-center justify-between p-4 bg-slate-900 border-b border-slate-800 sticky top-0 z-50">
         <div className="flex flex-col">
-          <div className="flex items-center gap-2 text-blue-500 font-bold text-xl">
+          <div className="flex items-center gap-2 text-blue-500 font-bold text-xl cursor-pointer" onClick={() => setCurrentView('home')}>
             <MonitorPlay size={24} />
             <span>SweDiamond<span className="text-white">TV</span></span>
           </div>
@@ -220,8 +216,6 @@ export default function App() {
         <NavItem icon={<Play />} label={t.home} active={currentView === 'home'} onClick={() => setCurrentView('home')} />
         <NavItem icon={<LayoutGrid />} label={t.multiview} active={currentView === 'multiview'} onClick={() => setCurrentView('multiview')} />
         <NavItem icon={<Users />} label={t.teams} active={currentView === 'teams' || currentView === 'teamDetail'} onClick={() => setCurrentView('teams')} />
-        
-        {/* ADDED MISSING BUTTONS BACK */}
         <NavItem icon={<Calendar />} label={t.schedule} active={currentView === 'schedule'} onClick={() => setCurrentView('schedule')} />
         <NavItem icon={<History />} label={t.archive} active={currentView === 'archive'} onClick={() => setCurrentView('archive')} />
       </nav>
@@ -240,6 +234,7 @@ export default function App() {
               </div>
             )}
 
+            {/* Featured Live */}
             {liveGames.length > 0 && (
               <section>
                 <div className="flex items-center gap-2 mb-4">
@@ -254,6 +249,7 @@ export default function App() {
               </section>
             )}
 
+            {/* Upcoming */}
             {(upcomingGames.length > 0 || currentView === 'home') && (
               <section>
                  <div className="flex items-center gap-2 mb-4">
@@ -271,6 +267,7 @@ export default function App() {
               </section>
             )}
 
+             {/* Recent/Archive */}
              {(pastGames.length > 0 || currentView === 'home') && (
                <section>
                  <div className="flex items-center gap-2 mb-4">
@@ -278,13 +275,13 @@ export default function App() {
                     <h2 className="text-xl font-bold uppercase tracking-wider text-slate-200">{t.past}</h2>
                   </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {pastGames.slice(0, 6).map(game => ( // Show only the latest 6 on the home screen
+                  {pastGames.slice(0, 6).map(game => (
                     <GameCard key={game.id} game={game} lang={language} i18n={t} onClick={() => playVideo(game)} />
                   ))}
                 </div>
                 {pastGames.length > 6 && (
                   <button onClick={() => setCurrentView('archive')} className="mt-4 text-blue-400 hover:text-blue-300 font-semibold text-sm">
-                    Se alla tidigare matcher &rarr;
+                    {language === 'sv' ? 'Se alla tidigare matcher \u2192' : 'View all past games \u2192'}
                   </button>
                 )}
               </section>
@@ -347,7 +344,7 @@ export default function App() {
            </div>
         )}
 
-        {/* WATCH VIEW (Single Game) */}
+        {/* WATCH VIEW (Single Game with YouTube Chat) */}
         {currentView === 'watch' && activeGame && (
           <div className="flex flex-col h-full animate-in slide-in-from-right-4">
             <div className="p-4 bg-slate-900 border-b border-slate-800 flex items-center gap-4 sticky top-0 md:top-auto z-40">
@@ -359,10 +356,10 @@ export default function App() {
                 <div className="flex items-center gap-2 text-sm text-slate-400 mt-1">
                   <span>{activeGame.league}</span>
                   <span>•</span>
-                  <span>{activeGame.status === 'live' ? t.liveBadge : formatTime(activeGame.startTime, language)}</span>
+                  <span>{activeGame.status === 'live' || isSmartLive(activeGame) ? t.liveBadge : formatTime(activeGame.startTime, language)}</span>
                   
-                  {/* DISPLAY VIEWERS IN PLAYER WINDOW */}
-                  {activeGame.status === 'live' && activeGame.viewers && (
+                  {/* VIEWERS DISPLAY IN HEADER */}
+                  {(activeGame.status === 'live' || isSmartLive(activeGame)) && activeGame.viewers && (
                      <>
                        <span>•</span>
                        <span className="flex items-center gap-1 text-red-400 font-medium">
@@ -374,25 +371,50 @@ export default function App() {
               </div>
             </div>
             
-            <div className="w-full aspect-video bg-black flex items-center justify-center relative shadow-2xl">
-              <iframe
-                className="absolute top-0 left-0 w-full h-full"
-                src={`https://www.youtube.com/embed/${activeGame.videoId}?autoplay=1&rel=0`}
-                title="YouTube video player"
-                frameBorder="0"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; web-share"
-                allowFullScreen
-              ></iframe>
-            </div>
+            <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
+              {/* Left Column: Video Player */}
+              <div className="w-full lg:w-3/4 aspect-video bg-black flex items-center justify-center relative shadow-2xl shrink-0">
+                <iframe
+                  className="absolute top-0 left-0 w-full h-full"
+                  src={`https://www.youtube.com/embed/${activeGame.videoId}?autoplay=1&rel=0`}
+                  title="YouTube video player"
+                  frameBorder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; web-share"
+                  allowFullScreen
+                ></iframe>
+              </div>
 
-            <div className="p-4 md:p-8 flex-1">
-               <div className="bg-slate-900 rounded-xl p-6 border border-slate-800">
-                 <h3 className="text-lg font-bold mb-2">{t.gameDetails}</h3>
-                 <p className="text-slate-400">{t.detailsDesc}</p>
-                 <p className="text-slate-500 text-sm mt-4 italic">
-                    Tips: Du kan högerklicka två gånger direkt på videon för att få fram webbläsarens inbyggda Bild-i-Bild (Picture-in-Picture) funktion!
-                 </p>
-               </div>
+              {/* Right Column: Open in YouTube & Chat Embed */}
+              <div className="w-full lg:w-1/4 flex flex-col bg-slate-900 border-l border-slate-800 shrink-0">
+                <div className="p-4 border-b border-slate-800">
+                  <a 
+                    href={`https://www.youtube.com/watch?v=${activeGame.videoId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 w-full bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg font-bold transition-colors shadow-lg"
+                  >
+                    <ExternalLink size={18} />
+                    {t.openInYoutube}
+                  </a>
+                  <p className="text-[11px] text-slate-400 mt-2 text-center leading-tight">
+                    {t.pipHint}
+                  </p>
+                </div>
+
+                {/* Only load live chat if the stream is live/smart-live */}
+                {activeGame.status === 'live' || isSmartLive(activeGame) ? (
+                  <iframe 
+                    className="flex-1 w-full min-h-[400px] lg:min-h-0 bg-slate-950"
+                    src={`https://www.youtube.com/live_chat?v=${activeGame.videoId}&embed_domain=${window.location.hostname}`}
+                    frameBorder="0"
+                  ></iframe>
+                ) : (
+                  <div className="p-6 overflow-y-auto">
+                    <h3 className="text-lg font-bold mb-2">{t.gameDetails}</h3>
+                    <p className="text-slate-400 text-sm">{t.detailsDesc}</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -440,14 +462,7 @@ export default function App() {
 }
 
 // --- SUBCOMPONENTS ---
-interface NavItemProps {
-  icon: React.ReactNode;
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}
-
-function NavItem({ icon, label, active, onClick }: NavItemProps) {
+function NavItem({ icon, label, active, onClick }) {
   return (
     <button 
       onClick={onClick}
@@ -465,16 +480,7 @@ function NavItem({ icon, label, active, onClick }: NavItemProps) {
   );
 }
 
-interface GameCardProps {
-  game: Game;
-  lang: Language;
-  i18n: any;
-  onClick: () => void;
-  isLarge?: boolean;
-  isSmartLive?: boolean;
-}
-
-function GameCard({ game, lang, i18n, onClick, isLarge = false, isSmartLive = false }: GameCardProps) {
+function GameCard({ game, lang, i18n, onClick, isLarge = false, isSmartLive = false }) {
   return (
     <div 
       onClick={onClick}
@@ -485,7 +491,7 @@ function GameCard({ game, lang, i18n, onClick, isLarge = false, isSmartLive = fa
         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-100 via-slate-900 to-black"></div>
         
         <div className="absolute top-3 left-3 z-20 flex flex-col gap-1">
-          {isSmartLive ? (
+          {isSmartLive || game.status === 'live' ? (
             <div className="flex gap-2">
               <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded flex items-center gap-1 shadow-lg shadow-red-500/30 w-max">
                 <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span> {i18n.liveBadge}
@@ -531,7 +537,7 @@ function GameCard({ game, lang, i18n, onClick, isLarge = false, isSmartLive = fa
         </h3>
         <div className="mt-auto">
           <p className="text-sm text-slate-400 flex items-center gap-1">
-            <Calendar size={14} /> {formatTime(game.startTime, lang)}
+            <Calendar size={14} /> {formatTime(game.startTime, language)}
           </p>
         </div>
       </div>
