@@ -1,4 +1,5 @@
-import { useState, useEffect, ReactNode } from 'react';
+import { useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import { Play, Calendar, History, LayoutGrid, MonitorPlay, ChevronLeft, Search, Users, Eye, ExternalLink } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, onSnapshot, query } from 'firebase/firestore';
