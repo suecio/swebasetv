@@ -64,7 +64,7 @@ type Game = {
   league: string;
   sport?: 'Baseball' | 'Softball' | 'Unknown';
   season?: string;
-  viewers?: string; // Added Viewer Count
+  viewers?: string; 
 };
 
 // --- FIREBASE CONFIGURATION ---
@@ -98,7 +98,8 @@ const formatTime = (timeStr: string, lang: Language) => {
 };
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<'home' | 'watch' | 'multiview' | 'teams' | 'teamDetail'>('home');
+  // ADDED 'schedule' and 'archive' to the views
+  const [currentView, setCurrentView] = useState<'home' | 'watch' | 'multiview' | 'teams' | 'teamDetail' | 'schedule' | 'archive'>('home');
   const [activeGame, setActiveGame] = useState<Game | null>(null);
   const [games, setGames] = useState<Game[]>([]);
   const [language, setLanguage] = useState<Language>('sv');
@@ -140,7 +141,6 @@ export default function App() {
 
   // --- SMART SORTING & FILTERING LOGIC ---
 
-  // Is the game starting within 10 mins AND not older than 6 hours?
   const isSmartLive = (g: Game) => {
     if (g.status === 'live') return true;
     if (g.status === 'upcoming') {
@@ -152,7 +152,6 @@ export default function App() {
     return false;
   };
 
-  // Did the stream get abandoned? (Stuck in upcoming > 6 hours past start time)
   const isAbandoned = (g: Game) => {
     if (g.status === 'upcoming') {
       const st = getSortTime(g.startTime);
@@ -163,17 +162,16 @@ export default function App() {
 
   const liveGames = displayGames
     .filter(isSmartLive)
-    .sort((a, b) => getSortTime(b.startTime) - getSortTime(a.startTime)); // Newest first
+    .sort((a, b) => getSortTime(b.startTime) - getSortTime(a.startTime)); 
 
   const upcomingGames = displayGames
     .filter(g => g.status === 'upcoming' && !isSmartLive(g) && !isAbandoned(g))
-    .sort((a, b) => getSortTime(a.startTime) - getSortTime(b.startTime)); // Soonest first (Ascending)
+    .sort((a, b) => getSortTime(a.startTime) - getSortTime(b.startTime)); 
 
   const pastGames = displayGames
     .filter(g => g.status === 'past' || isAbandoned(g))
-    .sort((a, b) => getSortTime(b.startTime) - getSortTime(a.startTime)); // Most recent first (Descending)
+    .sort((a, b) => getSortTime(b.startTime) - getSortTime(a.startTime));
 
-  // Extract unique teams for the Teams page
   const uniqueTeams = Array.from(new Set(games.flatMap(g => [g.team1, g.team2]))).filter(team => team && team !== 'TBD');
 
   const playVideo = (game: Game) => {
@@ -209,7 +207,7 @@ export default function App() {
       {/* Desktop Sidebar / Mobile Bottom Nav */}
       <nav className="fixed bottom-0 w-full md:w-64 md:relative md:flex-shrink-0 bg-slate-900 border-t md:border-t-0 md:border-r border-slate-800 z-50 flex md:flex-col justify-around md:justify-start p-2 md:p-4 gap-2">
         <div className="hidden md:flex flex-col mb-8 p-2">
-          <div className="flex items-center gap-2 text-blue-500 font-bold text-2xl">
+          <div className="flex items-center gap-2 text-blue-500 font-bold text-2xl cursor-pointer" onClick={() => setCurrentView('home')}>
             <MonitorPlay size={28} />
             <span>SweDiamond<span className="text-white">TV</span></span>
           </div>
@@ -222,6 +220,10 @@ export default function App() {
         <NavItem icon={<Play />} label={t.home} active={currentView === 'home'} onClick={() => setCurrentView('home')} />
         <NavItem icon={<LayoutGrid />} label={t.multiview} active={currentView === 'multiview'} onClick={() => setCurrentView('multiview')} />
         <NavItem icon={<Users />} label={t.teams} active={currentView === 'teams' || currentView === 'teamDetail'} onClick={() => setCurrentView('teams')} />
+        
+        {/* ADDED MISSING BUTTONS BACK */}
+        <NavItem icon={<Calendar />} label={t.schedule} active={currentView === 'schedule'} onClick={() => setCurrentView('schedule')} />
+        <NavItem icon={<History />} label={t.archive} active={currentView === 'archive'} onClick={() => setCurrentView('archive')} />
       </nav>
 
       {/* Main Content Area */}
@@ -238,7 +240,6 @@ export default function App() {
               </div>
             )}
 
-            {/* Featured Live */}
             {liveGames.length > 0 && (
               <section>
                 <div className="flex items-center gap-2 mb-4">
@@ -253,7 +254,6 @@ export default function App() {
               </section>
             )}
 
-            {/* Upcoming */}
             {(upcomingGames.length > 0 || currentView === 'home') && (
               <section>
                  <div className="flex items-center gap-2 mb-4">
@@ -271,7 +271,6 @@ export default function App() {
               </section>
             )}
 
-             {/* Recent/Archive */}
              {(pastGames.length > 0 || currentView === 'home') && (
                <section>
                  <div className="flex items-center gap-2 mb-4">
@@ -279,13 +278,49 @@ export default function App() {
                     <h2 className="text-xl font-bold uppercase tracking-wider text-slate-200">{t.past}</h2>
                   </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {pastGames.map(game => (
+                  {pastGames.slice(0, 6).map(game => ( // Show only the latest 6 on the home screen
                     <GameCard key={game.id} game={game} lang={language} i18n={t} onClick={() => playVideo(game)} />
                   ))}
                 </div>
+                {pastGames.length > 6 && (
+                  <button onClick={() => setCurrentView('archive')} className="mt-4 text-blue-400 hover:text-blue-300 font-semibold text-sm">
+                    Se alla tidigare matcher &rarr;
+                  </button>
+                )}
               </section>
              )}
           </div>
+        )}
+
+        {/* FULL SCHEDULE VIEW */}
+        {currentView === 'schedule' && (
+           <div className="p-4 md:p-8 animate-in fade-in">
+             <div className="flex items-center gap-2 mb-8">
+                <Calendar className="text-blue-500" size={28} />
+                <h1 className="text-3xl font-bold">{t.schedule}</h1>
+             </div>
+             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+               {upcomingGames.map(game => (
+                  <GameCard key={game.id} game={game} lang={language} i18n={t} onClick={() => playVideo(game)} />
+               ))}
+               {upcomingGames.length === 0 && <p className="text-slate-500">{t.noLive}</p>}
+             </div>
+           </div>
+        )}
+
+        {/* FULL ARCHIVE VIEW */}
+        {currentView === 'archive' && (
+           <div className="p-4 md:p-8 animate-in fade-in">
+             <div className="flex items-center gap-2 mb-8">
+                <History className="text-slate-400" size={28} />
+                <h1 className="text-3xl font-bold">{t.archive}</h1>
+             </div>
+             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+               {pastGames.map(game => (
+                  <GameCard key={game.id} game={game} lang={language} i18n={t} onClick={() => playVideo(game)} />
+               ))}
+             </div>
+           </div>
         )}
 
         {/* TEAMS DIRECTORY VIEW */}
@@ -321,7 +356,21 @@ export default function App() {
               </button>
               <div>
                 <h2 className="font-bold">{activeGame.title}</h2>
-                <p className="text-sm text-slate-400">{activeGame.league} • {activeGame.status === 'live' ? t.liveBadge : formatTime(activeGame.startTime, language)}</p>
+                <div className="flex items-center gap-2 text-sm text-slate-400 mt-1">
+                  <span>{activeGame.league}</span>
+                  <span>•</span>
+                  <span>{activeGame.status === 'live' ? t.liveBadge : formatTime(activeGame.startTime, language)}</span>
+                  
+                  {/* DISPLAY VIEWERS IN PLAYER WINDOW */}
+                  {activeGame.status === 'live' && activeGame.viewers && (
+                     <>
+                       <span>•</span>
+                       <span className="flex items-center gap-1 text-red-400 font-medium">
+                         <Eye size={14} /> {activeGame.viewers} watching
+                       </span>
+                     </>
+                  )}
+                </div>
               </div>
             </div>
             
@@ -340,6 +389,9 @@ export default function App() {
                <div className="bg-slate-900 rounded-xl p-6 border border-slate-800">
                  <h3 className="text-lg font-bold mb-2">{t.gameDetails}</h3>
                  <p className="text-slate-400">{t.detailsDesc}</p>
+                 <p className="text-slate-500 text-sm mt-4 italic">
+                    Tips: Du kan högerklicka två gånger direkt på videon för att få fram webbläsarens inbyggda Bild-i-Bild (Picture-in-Picture) funktion!
+                 </p>
                </div>
             </div>
           </div>
@@ -438,7 +490,7 @@ function GameCard({ game, lang, i18n, onClick, isLarge = false, isSmartLive = fa
               <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded flex items-center gap-1 shadow-lg shadow-red-500/30 w-max">
                 <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span> {i18n.liveBadge}
               </span>
-              {/* If viewer count exists in the DB, it displays here */}
+              {/* DISPLAY VIEWERS ON HOMESCREEN CARD */}
               {game.viewers && (
                  <span className="bg-black/70 backdrop-blur border border-slate-700 text-slate-200 text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1 shadow-lg w-max">
                    <Eye size={12} className="text-slate-400" /> {game.viewers}
