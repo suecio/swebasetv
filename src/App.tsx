@@ -150,28 +150,32 @@ export default function App() {
       
       {/* Mobile Top Nav */}
       <div className="md:hidden flex items-center justify-between p-4 bg-slate-900 border-b border-slate-800 sticky top-0 z-50">
-        <div className="flex items-center gap-2 text-blue-500 font-bold text-xl">
-          <MonitorPlay size={24} />
-          <span>SweDiamond<span className="text-white">TV</span></span>
+        <div className="flex flex-col">
+          <div className="flex items-center gap-2 text-blue-500 font-bold text-xl">
+            <MonitorPlay size={24} />
+            <span>SweDiamond<span className="text-white">TV</span></span>
+          </div>
+          <div className="flex gap-3 mt-1 ml-8">
+            <button onClick={() => setLanguage('sv')} className={`text-lg transition-opacity ${language === 'sv' ? 'opacity-100 grayscale-0' : 'opacity-40 grayscale hover:opacity-100'}`} title="Svenska">🇸🇪</button>
+            <button onClick={() => setLanguage('en')} className={`text-lg transition-opacity ${language === 'en' ? 'opacity-100 grayscale-0' : 'opacity-40 grayscale hover:opacity-100'}`} title="English">🇬🇧</button>
+          </div>
         </div>
-        <div className="flex gap-4">
-          <button onClick={toggleLanguage} className="text-sm font-bold text-slate-400 hover:text-white flex items-center gap-1">
-            <Globe size={16} /> {language === 'sv' ? 'EN' : 'SV'}
-          </button>
-          <button className="text-slate-400 hover:text-white" aria-label="Search"><Search size={20} /></button>
-        </div>
+        <button className="p-2 text-slate-400 hover:text-white" aria-label="Search">
+          <Search size={20} />
+        </button>
       </div>
 
       {/* Desktop Sidebar / Mobile Bottom Nav */}
       <nav className="fixed bottom-0 w-full md:w-64 md:relative md:flex-shrink-0 bg-slate-900 border-t md:border-t-0 md:border-r border-slate-800 z-50 flex md:flex-col justify-around md:justify-start p-2 md:p-4 gap-2">
-        <div className="hidden md:flex items-center justify-between mb-8 p-2">
+        <div className="hidden md:flex flex-col mb-8 p-2">
           <div className="flex items-center gap-2 text-blue-500 font-bold text-2xl">
             <MonitorPlay size={28} />
             <span>SweDiamond<span className="text-white">TV</span></span>
           </div>
-          <button onClick={toggleLanguage} className="hidden md:flex text-xs font-bold bg-slate-800 px-2 py-1 rounded text-slate-300 hover:bg-slate-700 transition">
-            <Globe size={14} className="mr-1 inline" /> {language === 'sv' ? 'EN' : 'SV'}
-          </button>
+          <div className="flex gap-4 mt-3 ml-9">
+            <button onClick={() => setLanguage('sv')} className={`text-2xl transition-all ${language === 'sv' ? 'opacity-100 grayscale-0 scale-110' : 'opacity-40 grayscale hover:opacity-80'}`} title="Svenska">🇸🇪</button>
+            <button onClick={() => setLanguage('en')} className={`text-2xl transition-all ${language === 'en' ? 'opacity-100 grayscale-0 scale-110' : 'opacity-40 grayscale hover:opacity-80'}`} title="English">🇬🇧</button>
+          </div>
         </div>
 
         <NavItem icon={<Play />} label={t.home} active={currentView === 'home'} onClick={() => setCurrentView('home')} />
