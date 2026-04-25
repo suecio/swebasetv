@@ -87,9 +87,8 @@ const formatTime = (timeStr: string, lang: Language) => {
   
   try {
     const d = new Date(timeStr);
-    if (isNaN(d.getTime())) return timeStr; // Return raw string if not a valid date
+    if (isNaN(d.getTime())) return timeStr; 
     
-    // Formats to e.g., "fre 18:00" (SV) or "Fri 6:00 PM" (EN)
     return new Intl.DateTimeFormat(lang === 'sv' ? 'sv-SE' : 'en-US', {
       weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
     }).format(d);
@@ -102,10 +101,10 @@ export default function App() {
   const [currentView, setCurrentView] = useState<'home' | 'watch' | 'multiview' | 'teams' | 'teamDetail'>('home');
   const [activeGame, setActiveGame] = useState<Game | null>(null);
   const [games, setGames] = useState<Game[]>([]);
-  const [language, setLanguage] = useState<Language>('sv'); // Default to Swedish
+  const [language, setLanguage] = useState<Language>('sv');
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
 
-  const t = i18n[language]; // Quick translation helper
+  const t = i18n[language]; 
 
   // Fetch games from Firebase automatically
   useEffect(() => {
@@ -131,7 +130,7 @@ export default function App() {
   const pastGames = displayGames.filter(g => g.status === 'past');
 
   // Extract unique teams for the Teams page
-  const uniqueTeams = Array.from(new Set(games.flatMap(g => [g.team1, g.team2]))).filter(t => t && t !== 'TBD');
+  const uniqueTeams = Array.from(new Set(games.flatMap(g => [g.team1, g.team2]))).filter(team => team && team !== 'TBD');
 
   const playVideo = (game: Game) => {
     setActiveGame(game);
@@ -224,7 +223,7 @@ export default function App() {
                       <GameCard game={game} lang={language} i18n={t} onClick={() => playVideo(game)} />
                     </div>
                   ))}
-                  {upcomingGames.length === 0 && <p className="text-slate-500 italic">No upcoming games scheduled.</p>}
+                  {upcomingGames.length === 0 && <p className="text-slate-500 italic">{t.noLive}</p>}
                 </div>
               </section>
             )}
